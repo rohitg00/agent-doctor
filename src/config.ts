@@ -33,6 +33,17 @@ export interface UserConfig {
     annotations?: boolean;
     stickyComment?: boolean;
   };
+  plugins?: string[];
+  ai?: {
+    model?: string;
+    maxFiles?: number;
+    maxBytesPerFile?: number;
+  };
+  integrations?: {
+    semgrep?: boolean;
+    gitleaks?: boolean;
+    osv?: boolean;
+  };
 }
 
 const DEFAULT: UserConfig = {
@@ -109,5 +120,8 @@ function merge(a: UserConfig, b: UserConfig): UserConfig {
       annotations: b.ci?.annotations ?? a.ci?.annotations,
       stickyComment: b.ci?.stickyComment ?? a.ci?.stickyComment,
     },
+    plugins: b.plugins ?? a.plugins,
+    ai: { ...(a.ai ?? {}), ...(b.ai ?? {}) },
+    integrations: { ...(a.integrations ?? {}), ...(b.integrations ?? {}) },
   };
 }
