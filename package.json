@@ -1,0 +1,54 @@
+{
+  "name": "agent-doctor",
+  "version": "0.0.1",
+  "description": "Diff-aware quality gate for AI-assisted code changes. Detects risk, plans validations, audits skills, ingests evidence.",
+  "license": "Apache-2.0",
+  "author": "Rohit Ghumare <ghumare64@gmail.com>",
+  "homepage": "https://github.com/rohitg00/agent-doctor",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rohitg00/agent-doctor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rohitg00/agent-doctor/issues"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "code-review",
+    "diff",
+    "skills",
+    "claude",
+    "cursor",
+    "codex",
+    "ci",
+    "linter"
+  ],
+  "type": "module",
+  "bin": {
+    "agent-doctor": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -w -p tsconfig.json",
+    "test": "node --test --import tsx test/**/*.test.ts",
+    "lint": "tsc --noEmit",
+    "doctor": "node dist/cli.js"
+  },
+  "dependencies": {
+    "yaml": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}
