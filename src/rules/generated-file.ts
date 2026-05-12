@@ -1,5 +1,6 @@
 import type { ChangedFile, Diagnostic } from "../types.js";
 import type { UserConfig } from "../config.js";
+import { globToRegex } from "../glob.js";
 
 export function generatedFileEditRule(args: {
   changedFiles: ChangedFile[];
@@ -35,12 +36,3 @@ export function generatedFileEditRule(args: {
   }));
 }
 
-function globToRegex(glob: string): RegExp {
-  const escaped = glob
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*\//g, "(?:.*/)?")
-    .replace(/\*\*/g, ".*")
-    .replace(/\*/g, "[^/]*")
-    .replace(/\?/g, ".");
-  return new RegExp(`^${escaped}$`);
-}

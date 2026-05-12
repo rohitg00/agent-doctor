@@ -8,6 +8,7 @@ import type {
 } from "./types.js";
 import type { UserConfig } from "./config.js";
 import { relative } from "node:path";
+import { globToRegex } from "./glob.js";
 
 const PUBLIC_API_HINTS = [/(^|\/)src\/index\.[jt]sx?$/, /(^|\/)src\/api\//, /(^|\/)src\/public\//];
 const SCHEMA_HINTS = [/(^|\/)migrations\//i, /(^|\/)schema\./i, /(^|\/)prisma\/schema/, /(^|\/)\.sql$/i];
@@ -207,12 +208,3 @@ function mapChangedToPackages(files: ChangedFile[], graph: ProjectGraph): string
   return [...out];
 }
 
-function globToRegex(glob: string): RegExp {
-  const escaped = glob
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*\//g, "(?:.*/)?")
-    .replace(/\*\*/g, ".*")
-    .replace(/\*/g, "[^/]*")
-    .replace(/\?/g, ".");
-  return new RegExp(`^${escaped}$`);
-}
