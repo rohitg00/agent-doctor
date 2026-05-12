@@ -20,8 +20,7 @@ function line(d: Diagnostic): string {
   const parts = [`title=${escape(d.id)}`];
   if (d.file) parts.push(`file=${escape(d.file)}`);
   if (d.line !== undefined) parts.push(`line=${d.line}`);
-  const body = d.message.replace(/\r?\n/g, " ");
-  return `::${cmd} ${parts.join(",")}::${escape(body)}`;
+  return `::${cmd} ${parts.join(",")}::${escape(d.message)}`;
 }
 
 function escape(s: string): string {
