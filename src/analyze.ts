@@ -8,7 +8,15 @@ import { generatedFileEditRule } from "./rules/generated-file.js";
 import { auditSkills, applicableSkillsForChanges } from "./rules/skills.js";
 import { score as computeScore } from "./score.js";
 import { loadConfig } from "./config.js";
-import type { CliOptions, Diagnostic, Report } from "./types.js";
+import { loadPlugins } from "./plugins/loader.js";
+import { planPythonChecks } from "./adapters/python.js";
+import { planGoChecks } from "./adapters/go.js";
+import { planRustChecks } from "./adapters/rust.js";
+import { planSecurityChecks } from "./integrations/security.js";
+import { ingestEvidence } from "./evidence/transcript.js";
+import { aiReview } from "./ai/review.js";
+import type { AgentDoctorPlugin } from "./plugin-api.js";
+import type { CliOptions, Diagnostic, PlannedCheck, Report } from "./types.js";
 
 export async function analyze(opts: CliOptions): Promise<Report> {
   const config = await loadConfig(opts.cwd, opts.configPath);
@@ -18,7 +26,19 @@ export async function analyze(opts: CliOptions): Promise<Report> {
   const changedFiles = await collectChanged(opts.cwd, opts.mode, base);
 
   const risk = classifyRisk({ changedFiles, config });
-  const plannedChecks = planChecks({ detected, changedFiles, risk, config });
+
+  const plugins = await loadPlugins(opts.cwd, config.plugins);
+
+  const plannedChecks: PlannedCheck[] = [
+    ...planChecks({ detected, changedFiles, risk, config }),
+    ...planPythonChecks({ cwd: opts.cwd, changedFiles, risk }),
+    ...planGoChecks({ cwd: opts.cwd, changedFiles, risk }),
+    ...planRustChecks({ cwd: opts.cwd, changedFiles, risk }),
+    ...(await planSecurityChecks({ cwd: opts.cwd, changedFiles, risk, config })),
+    ...(await planFromPlugins(plugins, { cwd: opts.cwd, config, detected, changedFiles, risk })),
+  ];
+
+  const events = await ingestEvidence(opts.evidencePaths, opts.cwd);
 
   const diagnostics: Diagnostic[] = [];
   diagnostics.push(...lockfileMismatchRule({ changedFiles, detected }));
@@ -30,6 +50,7 @@ export async function analyze(opts: CliOptions): Promise<Report> {
       skills: detected.skills,
       changedPaths: changedFiles.map((f) => f.path),
       cwd: opts.cwd,
+      events,
     }),
   );
 
@@ -51,6 +72,28 @@ export async function analyze(opts: CliOptions): Promise<Report> {
         confidence: "high",
       });
     }
+  }
+
+  for (const plugin of plugins) {
+    for (const rule of plugin.rules ?? []) {
+      try {
+        const out = await rule.run({ cwd: opts.cwd, config, detected, changedFiles, risk, checks });
+        diagnostics.push(...out);
+      } catch (err) {
+        diagnostics.push({
+          id: "plugin/rule-error",
+          severity: "warning",
+          title: `Plugin rule ${rule.id} threw`,
+          message: err instanceof Error ? err.message : String(err),
+          evidence: [],
+          confidence: "high",
+        });
+      }
+    }
+  }
+
+  if (opts.aiReview && !opts.noNetwork) {
+    diagnostics.push(...(await aiReview({ cwd: opts.cwd, changedFiles, diagnostics, config })));
   }
 
   const hasEvidenceForRisk = checks.some((c) => c.status === "passed" && c.required);
@@ -78,10 +121,29 @@ export async function analyze(opts: CliOptions): Promise<Report> {
       diffFiles: changedFiles.length,
       commandRuns: checks.length,
       ciLogs: 0,
-      agentEvents: 0,
+      agentEvents: events.length,
       artifacts: 0,
     },
     checks,
     diagnostics,
   };
+}
+
+async function planFromPlugins(
+  plugins: AgentDoctorPlugin[],
+  ctx: Parameters<NonNullable<AgentDoctorPlugin["plan"]>>[0],
+): Promise<PlannedCheck[]> {
+  const out: PlannedCheck[] = [];
+  for (const plugin of plugins) {
+    if (!plugin.plan) continue;
+    try {
+      const planned = await plugin.plan(ctx);
+      out.push(...planned);
+    } catch (err) {
+      process.stderr.write(
+        `agent-doctor: plugin ${plugin.name} plan() threw: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+    }
+  }
+  return out;
 }
