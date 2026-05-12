@@ -16,7 +16,8 @@ jobs:
         with:
           node-version: 20
       - run: npm install --no-audit --no-fund
-      - run: npx tsc -p tsconfig.json
+      - run: npm run typecheck
       - run: node --test --import tsx test/*.test.ts
+      - run: npm run build
       - run: node dist/cli.js --diff origin/main --plan-only --no-color
         continue-on-error: true

@@ -8,9 +8,23 @@ All diagnostic IDs are stable across `agent-doctor` versions. Severities can be 
 |-------------------------------------|---------|--------------------------------------------------------------------|
 | `validation/required-check-missing` | warning | A required check has no command resolved.                          |
 | `validation/required-check-failed`  | error   | A required check ran and exited non-zero.                          |
+| `validation/required-check-timed-out` | error | A required check exceeded its timeout (SIGTERM, then SIGKILL).     |
 | `validation/command-not-found`      | warning | A configured command is not on PATH.                               |
 | `validation/ci-does-not-cover-package` | info | A changed workspace package has no covering CI job.                |
 | `validation/browser-qa-missing`     | warning | UI changed but no browser test ran in this diff.                   |
+| `validation/python/lint`            | info    | Python ruff (advisory) check.                                      |
+| `validation/python/typecheck`       | warning | Python mypy or pyright check.                                      |
+| `validation/python/test`            | warning | Python pytest check.                                               |
+| `validation/go/vet`                 | warning | `go vet ./...`.                                                    |
+| `validation/go/test`                | warning | `go test ./...`.                                                   |
+| `validation/go/lint`                | info    | golangci-lint (advisory).                                          |
+| `validation/rust/check`             | warning | `cargo check`.                                                     |
+| `validation/rust/clippy`            | warning | `cargo clippy -- -D warnings`.                                     |
+| `validation/rust/test`              | warning | `cargo test`.                                                      |
+| `validation/rust/fmt`               | info    | `cargo fmt --check` (advisory).                                    |
+| `validation/security/semgrep`       | info    | semgrep (advisory).                                                |
+| `validation/security/gitleaks`      | warning | gitleaks secrets scan (required on security-sensitive paths).      |
+| `validation/security/osv`           | warning | OSV-Scanner against changed manifests/lockfiles.                   |
 
 ## Tests
 
@@ -54,6 +68,10 @@ All diagnostic IDs are stable across `agent-doctor` versions. Severities can be 
 | `agent/rendered-artifact-drift`   | warning | A rendered agent artifact drifted from its source.                 |
 | `agent/llm-only-block-unbalanced` | warning | LLM-only block markers are unbalanced.                             |
 | `agent/destructive-command-unguarded` | warning | Destructive shell with no nearby approval language.             |
+| `agent/skill-used`                | info    | Skill matched a changed path AND a transcript event proved it loaded. |
+| `plugin/rule-error`               | warning | A plugin rule threw at run time; pipeline kept going.            |
+| `ai/review-skipped`               | info    | --ai-review was requested but ANTHROPIC_API_KEY is not set.        |
+| `ai/review-error`                 | info    | --ai-review request failed.                                        |
 
 ## Evidence
 

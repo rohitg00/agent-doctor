@@ -143,13 +143,22 @@ Lockfile/manifest consistency, related-test heuristic, generated-file edit, requ
 
 Parse `SKILL.md` with YAML frontmatter, validate references and command mentions, detect oversized skills, detect destructive instructions without approval language.
 
-### Phase 5 — CI product
+### Phase 5 — CI product (shipped)
 
-CI wrapper, annotations, sticky PR comment, SARIF once diagnostics stabilize, JUnit-style output.
+- `--annotations` emits GitHub Actions `::error::` / `::warning::` / `::notice::` commands.
+- `--pr-comment` writes a sticky markdown body. Sticky marker `<!-- agent-doctor:sticky -->` so CI can upsert.
+- `--sarif` writes SARIF 2.1.0 with a rules registry pointing back at `docs/DIAGNOSTICS.md` anchors.
+- `--junit` writes JUnit XML.
 
-### Phase 6 — adapters and rule packs
+### Phase 6 — adapters, integrations, plugin API (shipped)
 
-Python adapter, Go adapter, Rust adapter, Semgrep integration, gitleaks integration, OSV integration, custom org plugin API.
+- Python adapter: triggers on `pyproject.toml` / `setup.py` / `requirements.txt` / `Pipfile` and any `.py` change. Picks `uv run` / `poetry run` / `pipenv run` / `python -m`. Plans `ruff check`, `mypy` or `pyright`, `pytest -q`.
+- Go adapter: triggers on `go.mod` + `.go` change. Plans `go vet ./...`, `go test ./...`, and `golangci-lint run` when configured.
+- Rust adapter: triggers on `Cargo.toml` + `.rs` change. Plans `cargo check`, `cargo clippy -- -D warnings`, `cargo test`, `cargo fmt --check`. Detects `[workspace]` root.
+- Security integrations probe PATH for `semgrep`, `gitleaks`, `osv-scanner`. Disable per integration via `config.integrations.<name> = false`.
+- Plugin API: `AgentDoctorPlugin` with optional `detect` / `plan` / `rules`. Loaded from `config.plugins`. See `docs/PLUGINS.md`.
+- Evidence ingestion: JSONL / JSON / plain transcripts via `--evidence`, normalized to `AgentEvent[]`. Skill rules escalate from `agent/skill-applicable-no-proof` to `agent/skill-used` when transcript proves load.
+- LLM-as-judge: opt-in `--ai-review`. Off by default. Requires `ANTHROPIC_API_KEY`. Bypassed by `--no-network`. Only emits advisory diagnostics.
 
 ## Real-world hardening checklist
 
