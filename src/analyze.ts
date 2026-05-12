@@ -44,10 +44,9 @@ export async function analyze(opts: CliOptions): Promise<Report> {
         id: "validation/required-check-missing",
         severity: "warning",
         title: `Required check missing: ${c.id}`,
-        message:
-          c.command && c.command.startsWith("<")
-            ? `No command configured. Tell agent-doctor how to run this check in agent-doctor.config.json -> commands.`
-            : `No command resolved.`,
+        message: c.command?.startsWith("<")
+          ? "No command configured. Tell agent-doctor how to run this check in agent-doctor.config.json -> commands."
+          : "No command resolved.",
         evidence: [],
         confidence: "high",
       });

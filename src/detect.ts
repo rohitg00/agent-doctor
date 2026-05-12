@@ -31,7 +31,7 @@ const CI_DIRS = [".github/workflows", ".gitlab", ".circleci"];
 
 export async function detectProject(cwd: string, skillPaths?: string[]): Promise<ProjectGraph> {
   const packageManager = detectPackageManager(cwd);
-  const { lockfile } = lockfileInfo(cwd);
+  const lockfile = detectLockfile(cwd);
   const packages = await detectPackages(cwd);
   const skills = await detectSkills(cwd, skillPaths ?? SKILL_ROOTS);
   const agentInstructions = await detectAgentInstructions(cwd);
@@ -58,11 +58,11 @@ function detectPackageManager(cwd: string): PackageManager {
   return "unknown";
 }
 
-function lockfileInfo(cwd: string): { lockfile?: string } {
+function detectLockfile(cwd: string): string | undefined {
   for (const name of ["pnpm-lock.yaml", "yarn.lock", "bun.lockb", "package-lock.json"]) {
-    if (existsSync(join(cwd, name))) return { lockfile: name };
+    if (existsSync(join(cwd, name))) return name;
   }
-  return {};
+  return undefined;
 }
 
 async function detectPackages(cwd: string): Promise<PackageNode[]> {
@@ -87,9 +87,7 @@ async function detectPackages(cwd: string): Promise<PackageNode[]> {
       try {
         const ws = parseYaml(await readFile(pnpmWs, "utf8")) as { packages?: string[] };
         for (const pat of ws.packages ?? []) workspaces.push(pat);
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
 
     for (const pat of workspaces) {
@@ -106,9 +104,7 @@ async function detectPackages(cwd: string): Promise<PackageNode[]> {
             scripts: (pkg["scripts"] as Record<string, string>) ?? {},
             workspaceRoot: false,
           });
-        } catch {
-          // ignore unparseable
-        }
+        } catch {}
       }
     }
   }

@@ -1,3 +1,4 @@
+import { relative } from "node:path";
 import type {
   ChangedFile,
   PlannedCheck,
@@ -7,7 +8,6 @@ import type {
   RiskSummary,
 } from "./types.js";
 import type { UserConfig } from "./config.js";
-import { relative } from "node:path";
 import { globToRegex } from "./glob.js";
 
 const PUBLIC_API_HINTS = [/(^|\/)src\/index\.[jt]sx?$/, /(^|\/)src\/api\//, /(^|\/)src\/public\//];
@@ -84,7 +84,6 @@ function rollup(d: RiskDimensions, fileCount: number): RiskLevel {
   if (d.securitySensitive || d.authOrPermission || d.schemaOrMigration) return "critical";
   if (d.publicApi || d.dependencyGraph || d.ciOrBuild || d.largeDeletion) return "high";
   if (d.uiOrRoute || d.agentInstruction || fileCount > 30) return "medium";
-  if (fileCount === 0) return "low";
   return "low";
 }
 
@@ -96,16 +95,14 @@ export function planChecks(args: {
 }): PlannedCheck[] {
   const planned: PlannedCheck[] = [];
   const scripts = collectScripts(args.detected);
-  const cmd = (key: string, fallback?: string): string | undefined => {
+  const cmd = (key: string): string | undefined => {
     const override = args.config.commands?.[key];
     if (override) return override;
-    const script = scripts.get(key);
-    if (script) return formatScript(args.detected.packageManager, key);
-    return fallback;
+    if (scripts.has(key)) return formatScript(args.detected.packageManager, key);
+    return undefined;
   };
 
-  const affected = mapChangedToPackages(args.changedFiles, args.detected);
-  const touched = affected.length > 0;
+  const touched = mapChangedToPackages(args.changedFiles, args.detected).length > 0;
 
   const typecheckCmd = cmd("typecheck") ?? cmd("type-check");
   if (typecheckCmd && touched) {

@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { analyze } from "./analyze.js";
 import { renderJson, renderText } from "./report.js";
-import type { CliOptions, Mode, Profile } from "./types.js";
+import type { CliOptions, Mode, Profile, Report } from "./types.js";
 
 interface ParsedArgs {
   positional: string[];
@@ -84,10 +84,6 @@ function isProfile(s: string): s is Profile {
   return s === "local" || s === "ci" || s === "release" || s === "skill-library";
 }
 
-function isMode(s: string): s is Mode {
-  return s === "diff" || s === "staged" || s === "full";
-}
-
 export async function main(argv: string[]): Promise<number> {
   const { positional, flags } = parseArgs(argv);
 
@@ -126,6 +122,7 @@ export async function main(argv: string[]): Promise<number> {
     return 2;
   }
 
+  const configFlag = flags.get("config");
   const opts: CliOptions = {
     cwd,
     mode,
@@ -137,10 +134,8 @@ export async function main(argv: string[]): Promise<number> {
     annotations: flags.has("annotations"),
     failOn: failOnRaw as CliOptions["failOn"],
     evidencePaths: collectEvidence(flags),
-    configPath: typeof flags.get("config") === "string" ? (flags.get("config") as string) : undefined,
+    configPath: typeof configFlag === "string" ? configFlag : undefined,
   };
-
-  void isMode; // imported for future mode normalization
 
   const report = await analyze(opts);
 
@@ -159,7 +154,7 @@ function collectEvidence(flags: Map<string, string | boolean>): string[] {
   return [];
 }
 
-function exitCode(report: Awaited<ReturnType<typeof analyze>>, failOn: CliOptions["failOn"]): number {
+function exitCode(report: Report, failOn: CliOptions["failOn"]): number {
   if (failOn === "none") return 0;
   const hasError =
     report.diagnostics.some((d) => d.severity === "error") ||
