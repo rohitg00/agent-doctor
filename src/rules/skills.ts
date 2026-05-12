@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import type { Diagnostic, SkillDefinition } from "../types.js";
 import type { UserConfig } from "../config.js";
+import type { AgentEvent } from "../evidence/transcript.js";
 
 const DANGEROUS_PATTERNS: RegExp[] = [
   /\brm\s+-rf\b/,
@@ -163,24 +164,33 @@ export function applicableSkillsForChanges(args: {
   skills: SkillDefinition[];
   changedPaths: string[];
   cwd: string;
+  events?: AgentEvent[];
 }): Diagnostic[] {
   const out: Diagnostic[] = [];
+  const loadedNames = new Set(
+    (args.events ?? [])
+      .filter((e) => e.type === "skill.loaded" && typeof e.name === "string")
+      .map((e) => (e.name as string).toLowerCase()),
+  );
   for (const skill of args.skills) {
     const desc = (skill.description ?? (skill.frontmatter["description"] as string)) ?? "";
     if (!desc) continue;
     const tokens = desc.toLowerCase().split(/[^a-z0-9_/.+-]/).filter((t) => t.length > 3);
     const match = args.changedPaths.find((p) => tokens.some((t) => p.toLowerCase().includes(t)));
-    if (match) {
-      out.push({
-        id: "agent/skill-applicable-no-proof",
-        severity: "info",
-        title: "Skill appears applicable to this diff",
-        message: `Skill ${relative(args.cwd, skill.path)} description mentions terms that overlap with ${match}. No transcript evidence was supplied — informational only.`,
-        file: skill.path,
-        evidence: [{ kind: "file", path: skill.path }],
-        confidence: "low",
-      });
-    }
+    if (!match) continue;
+    const skillName = (skill.name ?? (skill.frontmatter["name"] as string) ?? "").toLowerCase();
+    const proven = skillName && loadedNames.has(skillName);
+    out.push({
+      id: proven ? "agent/skill-used" : "agent/skill-applicable-no-proof",
+      severity: proven ? "info" : "info",
+      title: proven ? "Skill matched diff and a transcript event proved it loaded" : "Skill appears applicable to this diff",
+      message: proven
+        ? `Skill ${relative(args.cwd, skill.path)} matched ${match} and the transcript shows skill.loaded.`
+        : `Skill ${relative(args.cwd, skill.path)} description mentions terms that overlap with ${match}. No transcript evidence was supplied — informational only.`,
+      file: skill.path,
+      evidence: [{ kind: "file", path: skill.path }],
+      confidence: proven ? "high" : "low",
+    });
   }
   return out;
 }
