@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import type { PlannedCheck, CheckResult, Evidence } from "./types.js";
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
+const KILL_GRACE_MS = 2000;
 const OUTPUT_LIMIT = 8 * 1024;
 
 export interface RunOptions {
@@ -36,10 +37,10 @@ export async function runChecks(checks: PlannedCheck[], opts: RunOptions): Promi
         ? []
         : [
             {
-              id: "validation/required-check-failed",
+              id: exec.timedOut ? "validation/required-check-timed-out" : "validation/required-check-failed",
               severity: c.required ? "error" : "warning",
-              title: `${c.id} failed`,
-              message: `Exit code ${exec.exitCode}. Excerpt:\n${exec.output.slice(0, 600)}`,
+              title: exec.timedOut ? `${c.id} timed out` : `${c.id} failed`,
+              message: `Exit code ${exec.exitCode}.${exec.timedOut ? " Timed out." : ""} Excerpt:\n${exec.output.slice(0, 600)}`,
               evidence: [evidence],
               confidence: "high",
               nextActions: [{ label: "re-run locally", command: c.command }],
@@ -53,6 +54,7 @@ export async function runChecks(checks: PlannedCheck[], opts: RunOptions): Promi
 interface ExecResult {
   exitCode: number;
   output: string;
+  timedOut: boolean;
 }
 
 function runOne(command: string, opts: RunOptions): Promise<ExecResult> {
@@ -64,6 +66,8 @@ function runOne(command: string, opts: RunOptions): Promise<ExecResult> {
     });
     let output = "";
     let truncated = false;
+    let timedOut = false;
+    let killTimer: NodeJS.Timeout | undefined;
     const append = (chunk: Buffer): void => {
       if (output.length >= OUTPUT_LIMIT) {
         truncated = true;
@@ -79,19 +83,26 @@ function runOne(command: string, opts: RunOptions): Promise<ExecResult> {
     child.stderr?.on("data", append);
 
     const timer = setTimeout(() => {
+      timedOut = true;
       child.kill("SIGTERM");
+      killTimer = setTimeout(() => {
+        if (!child.killed) child.kill("SIGKILL");
+      }, KILL_GRACE_MS);
     }, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
-    child.on("close", (code) => {
+    const finish = (code: number, extra = ""): void => {
       clearTimeout(timer);
-      resolve({
-        exitCode: code ?? -1,
-        output: truncated ? `${output}\n... (truncated)` : output,
-      });
+      if (killTimer) clearTimeout(killTimer);
+      const suffix = (truncated ? "\n... (truncated)" : "") + (extra ? `\n${extra}` : "");
+      resolve({ exitCode: code, output: output + suffix, timedOut });
+    };
+
+    child.on("close", (code) => {
+      const reportedCode = timedOut ? 124 : code ?? -1;
+      finish(reportedCode, timedOut ? `command timed out after ${opts.timeoutMs ?? DEFAULT_TIMEOUT_MS}ms` : "");
     });
     child.on("error", () => {
-      clearTimeout(timer);
-      resolve({ exitCode: 127, output: `failed to spawn: ${command}` });
+      finish(127, `failed to spawn: ${command}`);
     });
   });
 }

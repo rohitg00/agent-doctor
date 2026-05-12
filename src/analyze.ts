@@ -105,7 +105,7 @@ export async function analyze(opts: CliOptions): Promise<Report> {
   });
 
   const ok = diagnostics.every((d) => d.severity !== "error") &&
-    checks.every((c) => c.status !== "failed" || !c.required);
+    checks.every((c) => !c.required || (c.status === "passed" || c.status === "skipped"));
 
   return {
     ok,

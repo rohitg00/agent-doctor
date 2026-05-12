@@ -72,8 +72,9 @@ function frontmatterDiagnostics(skill: SkillDefinition): Diagnostic[] {
       confidence: "high",
     });
   } else {
-    const desc = (skill.description ?? (skill.frontmatter["description"] as string)) ?? "";
-    if (desc.length < 20) {
+    const rawDesc = skill.description ?? skill.frontmatter["description"];
+    const desc = typeof rawDesc === "string" ? rawDesc : "";
+    if (desc.length > 0 && desc.length < 20) {
       out.push({
         id: "agent/skill-trigger-too-broad",
         severity: "info",
@@ -173,8 +174,9 @@ export function applicableSkillsForChanges(args: {
       .map((e) => (e.name as string).toLowerCase()),
   );
   for (const skill of args.skills) {
-    const desc = (skill.description ?? (skill.frontmatter["description"] as string)) ?? "";
-    if (!desc) continue;
+    const rawDesc = skill.description ?? skill.frontmatter["description"];
+    if (typeof rawDesc !== "string" || rawDesc.length === 0) continue;
+    const desc = rawDesc;
     const tokens = desc.toLowerCase().split(/[^a-z0-9_/.+-]/).filter((t) => t.length > 3);
     const match = args.changedPaths.find((p) => tokens.some((t) => p.toLowerCase().includes(t)));
     if (!match) continue;

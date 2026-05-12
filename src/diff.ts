@@ -45,9 +45,14 @@ export async function collectChanged(cwd: string, mode: Mode, base?: string): Pr
       return collectChanged(cwd, "staged", undefined);
     }
     const out = await git(
-      ["diff", "--name-status", "--no-renames=false", "-M50%", `${ref}...HEAD`],
+      ["diff", "--name-status", "-M50%", `${ref}...HEAD`],
       cwd,
-    ).catch(() => "");
+    ).catch((err: unknown) => {
+      process.stderr.write(
+        `agent-doctor: git diff against ${ref} failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      return "";
+    });
     const wt = await collectChanged(cwd, "staged", undefined);
     const fromRef = parseNameStatus(out);
     return dedupe([...fromRef, ...wt]);

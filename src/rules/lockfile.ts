@@ -5,7 +5,7 @@ export function lockfileMismatchRule(args: {
   detected: ProjectGraph;
 }): Diagnostic[] {
   const manifestChanged = args.changedFiles.some(
-    (f) => f.path === "package.json" || /(^|\/)packages?\/[^/]+\/package\.json$/.test(f.path),
+    (f) => f.path.endsWith("package.json") && !f.path.includes("node_modules/"),
   );
   if (!manifestChanged) return [];
 

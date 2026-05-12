@@ -17,6 +17,6 @@ export function globToRegex(glob: string): RegExp {
     .split(S)
     .join("[^/]*")
     .split(Q)
-    .join(".");
+    .join("[^/]");
   return new RegExp(`^${replaced}$`);
 }

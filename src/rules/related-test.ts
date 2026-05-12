@@ -6,7 +6,7 @@ const NON_CODE = /(\.md$|\.json$|\.ya?ml$|\.lock$|\/types?\.ts$)/;
 
 export function noRelatedTestRule(args: { changedFiles: ChangedFile[] }): Diagnostic[] {
   const out: Diagnostic[] = [];
-  const tests = args.changedFiles.filter((f) => TEST_HINTS.test(f.path));
+  const tests = args.changedFiles.filter((f) => TEST_HINTS.test(f.path) && f.status !== "deleted");
   const testStems = new Set(tests.map((f) => stem(f.path)));
 
   for (const f of args.changedFiles) {

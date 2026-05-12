@@ -133,11 +133,12 @@ async function expandGlob(root: string, pattern: string): Promise<string[]> {
     const next: string[] = [];
     for (const dir of candidates) {
       if (!existsSync(dir)) continue;
+      if (seg === "**") {
+        for (const descendant of await walkDirs(dir)) next.push(descendant);
+        continue;
+      }
       const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
       if (seg === "*") {
-        for (const e of entries) if (e.isDirectory()) next.push(join(dir, e.name));
-      } else if (seg === "**") {
-        next.push(dir);
         for (const e of entries) if (e.isDirectory()) next.push(join(dir, e.name));
       } else {
         const target = join(dir, seg);
@@ -147,6 +148,23 @@ async function expandGlob(root: string, pattern: string): Promise<string[]> {
     candidates = next;
   }
   return candidates;
+}
+
+async function walkDirs(root: string): Promise<string[]> {
+  const out: string[] = [root];
+  const queue = [root];
+  while (queue.length > 0) {
+    const dir = queue.shift()!;
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      if (e.name === "node_modules" || e.name === ".git") continue;
+      const child = join(dir, e.name);
+      out.push(child);
+      queue.push(child);
+    }
+  }
+  return out;
 }
 
 async function detectSkills(cwd: string, roots: string[]): Promise<SkillDefinition[]> {
@@ -194,11 +212,12 @@ async function readSkill(path: string): Promise<SkillDefinition> {
 }
 
 function splitFrontmatter(raw: string): { frontmatter?: string; body: string } {
-  if (!raw.startsWith("---")) return { body: raw };
-  const end = raw.indexOf("\n---", 3);
-  if (end === -1) return { body: raw };
-  const fm = raw.slice(3, end).replace(/^\n/, "");
-  const body = raw.slice(end + 4).replace(/^\n/, "");
+  const normalized = raw.replace(/\r\n/g, "\n");
+  if (!normalized.startsWith("---")) return { body: normalized };
+  const end = normalized.indexOf("\n---", 3);
+  if (end === -1) return { body: normalized };
+  const fm = normalized.slice(3, end).replace(/^\n/, "");
+  const body = normalized.slice(end + 4).replace(/^\n/, "");
   return { frontmatter: fm, body };
 }
 

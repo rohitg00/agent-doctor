@@ -191,16 +191,26 @@ function formatScript(pm: ProjectGraph["packageManager"], script: string): strin
 }
 
 function mapChangedToPackages(files: ChangedFile[], graph: ProjectGraph): string[] {
+  if (files.length === 0) return [];
   const out = new Set<string>();
-  const dirs = graph.packages
-    .filter((p) => !p.workspaceRoot)
-    .map((p) => ({ name: p.name, dir: relative(graph.root, p.dir).replace(/\\/g, "/") }));
+  const dirs = graph.packages.map((p) => ({
+    name: p.name,
+    dir: relative(graph.root, p.dir).replace(/\\/g, "/"),
+    workspaceRoot: p.workspaceRoot,
+  }));
+  const nonRoot = dirs.filter((d) => !d.workspaceRoot);
+  const root = dirs.find((d) => d.workspaceRoot);
+
   for (const f of files) {
-    for (const d of dirs) {
-      if (f.path === d.dir || f.path.startsWith(`${d.dir}/`)) {
+    let matched = false;
+    for (const d of nonRoot) {
+      if (d.dir && (f.path === d.dir || f.path.startsWith(`${d.dir}/`))) {
         out.add(d.name);
+        matched = true;
+        break;
       }
     }
+    if (!matched && root) out.add(root.name);
   }
   return [...out];
 }
