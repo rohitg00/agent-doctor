@@ -159,4 +159,6 @@ export interface CliOptions {
   evidencePaths: string[];
   configPath?: string;
   explain?: string;
+  aiReview?: boolean;
+  noNetwork?: boolean;
 }

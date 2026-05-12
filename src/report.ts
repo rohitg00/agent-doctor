@@ -1,119 +1,174 @@
-import type { Diagnostic, Report } from "./types.js";
+import type { CheckResult, Diagnostic, Report } from "./types.js";
+import {
+  banner,
+  compose,
+  glyphs,
+  paint,
+  progressBar,
+  rule,
+  sectionHeader,
+  stripAnsi,
+  type ThemeOptions,
+  type Tone,
+} from "./theme.js";
 
-const COLOR = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  red: "\x1b[31m",
-  yellow: "\x1b[33m",
-  blue: "\x1b[34m",
-  green: "\x1b[32m",
-  gray: "\x1b[90m",
-};
-
-function paint(text: string, color: keyof typeof COLOR, useColor: boolean): string {
-  if (!useColor) return text;
-  return `${COLOR[color]}${text}${COLOR.reset}`;
+export interface RenderOptions {
+  color: boolean;
+  unicode: boolean;
+  width: number;
+  version: string;
 }
 
-export function renderText(report: Report, useColor = true): string {
+export function renderText(report: Report, opts: RenderOptions): string {
+  const theme: ThemeOptions = { color: opts.color, unicode: opts.unicode };
+  const g = glyphs(theme);
   const lines: string[] = [];
-  const headerColor =
-    report.label === "Ready"
-      ? "green"
-      : report.label === "Needs review"
-        ? "blue"
-        : report.label === "Risky"
-          ? "yellow"
-          : "red";
-  lines.push(
-    paint(`Agent Doctor: ${report.score}/100 ${report.label}`, headerColor as keyof typeof COLOR, useColor),
-  );
+
+  lines.push(banner(opts.version, theme));
   lines.push("");
-  lines.push(`Mode: ${report.mode}${report.profile !== "local" ? ` (profile: ${report.profile})` : ""}`);
-  lines.push(`Changed files: ${report.changedFiles.length}`);
+  lines.push(scoreCard(report, opts));
+  lines.push("");
+  lines.push(rule(Math.min(opts.width, 78), theme));
 
-  const detected = [
-    report.detected.packageManager !== "unknown" ? report.detected.packageManager : null,
-    report.detected.packages.length > 1 ? `${report.detected.packages.length} packages` : null,
-    report.detected.skills.length > 0 ? `${report.detected.skills.length} skills` : null,
-    report.detected.agentInstructions.length > 0 ? "agent instructions" : null,
-    report.detected.ciWorkflows.length > 0 ? "CI workflows" : null,
-  ]
-    .filter(Boolean)
-    .join(", ");
-  if (detected) lines.push(`Detected: ${detected}`);
-
-  lines.push(`Risk: ${report.risk.level}`);
-  if (report.risk.notes.length > 0) {
-    for (const note of report.risk.notes) lines.push(paint(`  - ${note}`, "gray", useColor));
-  }
+  lines.push(...summary(report, theme));
 
   if (report.plannedChecks.length > 0) {
-    lines.push("");
-    lines.push(paint("Planned checks", "bold", useColor));
+    lines.push(sectionHeader(`planned (${report.plannedChecks.length})`, theme));
     for (const c of report.plannedChecks) {
-      const tag = c.required ? "[required]" : "[recommended]";
-      lines.push(`  ${tag} ${c.id}: ${paint(c.command, "dim", useColor)}`);
-      lines.push(paint(`      ${c.reason}`, "gray", useColor));
+      const tag = c.required
+        ? paint("required", "lime", theme)
+        : paint("recommended", "moss", theme);
+      lines.push(`  ${g.arrow} ${tag}  ${paint(c.id, "bold", theme)}`);
+      lines.push(`    ${paint(g.branchM, "charcoal", theme)} ${paint(c.command, "mint", theme)}`);
+      lines.push(`    ${paint(g.branchL, "charcoal", theme)} ${paint(c.reason, "fog", theme)}`);
     }
   }
 
   if (report.checks.length > 0) {
-    lines.push("");
-    lines.push(paint("Check results", "bold", useColor));
+    lines.push(sectionHeader(`results (${report.checks.length})`, theme));
     for (const c of report.checks) {
-      const statusColor =
-        c.status === "passed"
-          ? "green"
-          : c.status === "failed"
-            ? "red"
-            : c.status === "missing"
-              ? "yellow"
-              : "gray";
-      const dur = c.durationMs !== undefined ? ` ${(c.durationMs / 1000).toFixed(1)}s` : "";
-      lines.push(`  ${paint(c.status, statusColor as keyof typeof COLOR, useColor)} ${c.id}${dur}`);
+      lines.push(`  ${checkBadge(c, theme)}  ${paint(c.id, "bold", theme)}${duration(c, theme)}`);
+      if (c.command) {
+        lines.push(`    ${paint(g.branchL, "charcoal", theme)} ${paint(c.command, "fog", theme)}`);
+      }
     }
   }
 
   const grouped = groupBySeverity(report.diagnostics);
   if (grouped.error.length > 0) {
-    lines.push("");
-    lines.push(paint("Errors", "red", useColor));
-    for (const d of grouped.error) lines.push(...renderDiagnostic(d, useColor));
+    lines.push(sectionHeader(`errors (${grouped.error.length})`, theme));
+    for (const d of grouped.error) lines.push(...renderDiagnostic(d, theme));
   }
   if (grouped.warning.length > 0) {
-    lines.push("");
-    lines.push(paint("Warnings", "yellow", useColor));
-    for (const d of grouped.warning) lines.push(...renderDiagnostic(d, useColor));
+    lines.push(sectionHeader(`warnings (${grouped.warning.length})`, theme));
+    for (const d of grouped.warning) lines.push(...renderDiagnostic(d, theme));
   }
   if (grouped.info.length > 0) {
-    lines.push("");
-    lines.push(paint("Info", "blue", useColor));
-    for (const d of grouped.info) lines.push(...renderDiagnostic(d, useColor));
+    lines.push(sectionHeader(`info (${grouped.info.length})`, theme));
+    for (const d of grouped.info) lines.push(...renderDiagnostic(d, theme));
   }
 
   if (report.diagnostics.length === 0 && report.checks.length === 0 && report.plannedChecks.length === 0) {
     lines.push("");
-    lines.push(paint("No diagnostics. No checks planned.", "gray", useColor));
+    lines.push(paint("  no diagnostics. nothing to plan.", "fog", theme));
   }
 
   return lines.join("\n");
 }
 
-function renderDiagnostic(d: Diagnostic, useColor: boolean): string[] {
+function scoreCard(report: Report, opts: RenderOptions): string {
+  const theme: ThemeOptions = { color: opts.color, unicode: opts.unicode };
+  const tone: Tone =
+    report.label === "Ready"
+      ? "lime"
+      : report.label === "Needs review"
+        ? "ember"
+        : report.label === "Risky"
+          ? "amber"
+          : "rust";
+  const score = `${report.score}/100`;
+  const bar = progressBar(report.score, 28, theme);
+  const label = compose(report.label, ["bold", tone], theme);
+  return `  ${bar}  ${paint(score, "bold", theme)}  ${label}`;
+}
+
+function summary(report: Report, theme: ThemeOptions): string[] {
+  const lines: string[] = [];
+  const meta = [
+    `mode ${report.mode}`,
+    `profile ${report.profile}`,
+    `risk ${report.risk.level}`,
+    `files ${report.changedFiles.length}`,
+  ].join(`  ${paint("·", "charcoal", theme)}  `);
+  lines.push("");
+  lines.push(`  ${paint(meta, "fog", theme)}`);
+
+  const detectedParts: string[] = [];
+  if (report.detected.packageManager !== "unknown") detectedParts.push(report.detected.packageManager);
+  if (report.detected.packages.length > 1) detectedParts.push(`${report.detected.packages.length} packages`);
+  if (report.detected.skills.length > 0) detectedParts.push(`${report.detected.skills.length} skills`);
+  if (report.detected.agentInstructions.length > 0) detectedParts.push("agent instructions");
+  if (report.detected.ciWorkflows.length > 0) detectedParts.push(`${report.detected.ciWorkflows.length} ci workflows`);
+  if (detectedParts.length > 0) {
+    lines.push(`  ${paint(`detected ${detectedParts.join(", ")}`, "moss", theme)}`);
+  }
+
+  if (report.risk.notes.length > 0) {
+    for (const note of report.risk.notes.slice(0, 3)) {
+      lines.push(`  ${paint(`! ${note}`, "amber", theme)}`);
+    }
+    if (report.risk.notes.length > 3) {
+      lines.push(`  ${paint(`+ ${report.risk.notes.length - 3} more`, "charcoal", theme)}`);
+    }
+  }
+  return lines;
+}
+
+function checkBadge(c: CheckResult, theme: ThemeOptions): string {
+  const g = glyphs(theme);
+  switch (c.status) {
+    case "passed":
+      return paint(g.check, "lime", theme);
+    case "failed":
+      return paint(g.cross, "rust", theme);
+    case "missing":
+      return paint(g.warn, "amber", theme);
+    default:
+      return paint(g.bullet, "charcoal", theme);
+  }
+}
+
+function duration(c: CheckResult, theme: ThemeOptions): string {
+  if (c.durationMs === undefined) return "";
+  return `  ${paint(`${(c.durationMs / 1000).toFixed(1)}s`, "charcoal", theme)}`;
+}
+
+function renderDiagnostic(d: Diagnostic, theme: ThemeOptions): string[] {
+  const g = glyphs(theme);
+  const sevGlyph =
+    d.severity === "error" ? paint(g.cross, "rust", theme)
+      : d.severity === "warning" ? paint(g.warn, "amber", theme)
+        : paint(g.info, "moss", theme);
   const out: string[] = [];
-  out.push(`  ${paint(d.id, "bold", useColor)}`);
-  out.push(`    ${d.title}`);
-  if (d.message && d.message !== d.title) out.push(`    ${d.message}`);
+  out.push(`  ${sevGlyph} ${compose(d.id, ["bold", "ember"], theme)}`);
+  out.push(`    ${paint(g.branchM, "charcoal", theme)} ${d.title}`);
+  if (d.message && d.message !== d.title) {
+    const msgLines = d.message.split("\n");
+    for (const line of msgLines) {
+      out.push(`    ${paint(g.branchM, "charcoal", theme)} ${paint(line, "fog", theme)}`);
+    }
+  }
   if (d.file) {
-    const loc = d.line ? `${d.file}:${d.line}` : d.file;
-    out.push(paint(`    at ${loc}`, "gray", useColor));
+    const loc = d.line !== undefined ? `${d.file}:${d.line}` : d.file;
+    out.push(`    ${paint(g.branchM, "charcoal", theme)} ${paint(`at ${loc}`, "moss", theme)}`);
   }
   for (const next of d.nextActions ?? []) {
-    out.push(paint(`    next: ${next.label}`, "gray", useColor));
-    if (next.command) out.push(paint(`          $ ${next.command}`, "dim", useColor));
+    out.push(`    ${paint(g.branchL, "charcoal", theme)} ${paint("next:", "mint", theme)} ${next.label}`);
+    if (next.command) {
+      out.push(`         ${paint(g.arrow, "ember", theme)} ${paint(next.command, "fog", theme)}`);
+    }
   }
+  out.push("");
   return out;
 }
 
@@ -128,3 +183,5 @@ function groupBySeverity(ds: Diagnostic[]): { error: Diagnostic[]; warning: Diag
 export function renderJson(report: Report): string {
   return JSON.stringify(report, null, 2);
 }
+
+export { stripAnsi };
