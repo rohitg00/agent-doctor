@@ -90,6 +90,162 @@ describe("planRustChecks()", () => {
   });
 });
 
+describe("adapter edge cases", () => {
+  it("planPythonChecks returns empty when no project markers exist", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ad-py-empty-"));
+    try {
+      const out = planPythonChecks({
+        cwd: dir,
+        changedFiles: [{ path: "app/foo.py", status: "modified" }],
+        risk: riskMed,
+      });
+      strictEqual(out.length, 0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("planGoChecks returns empty when no go.mod / go.work", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ad-go-empty-"));
+    try {
+      const out = planGoChecks({
+        cwd: dir,
+        changedFiles: [{ path: "main.go", status: "modified" }],
+        risk: riskMed,
+      });
+      strictEqual(out.length, 0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("planGoChecks fires on go.work workspaces", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ad-go-work-"));
+    try {
+      await writeFile(join(dir, "go.work"), "go 1.22\nuse ./a\n");
+      const out = planGoChecks({
+        cwd: dir,
+        changedFiles: [{ path: "go.work.sum", status: "modified" }],
+        risk: riskMed,
+      });
+      ok(out.some((c) => c.id === "validation/go/vet"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("planGoChecks adds golangci-lint when config present", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ad-go-lint-"));
+    try {
+      await writeFile(join(dir, "go.mod"), "module x\n");
+      await writeFile(join(dir, ".golangci.yml"), "linters: { enable: [govet] }\n");
+      const out = planGoChecks({
+        cwd: dir,
+        changedFiles: [{ path: "main.go", status: "modified" }],
+        risk: riskMed,
+      });
+      ok(out.some((c) => c.id === "validation/go/lint"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("planRustChecks returns empty without Cargo.toml", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ad-rs-empty-"));
+    try {
+      const out = planRustChecks({
+        cwd: dir,
+        changedFiles: [{ path: "src/lib.rs", status: "modified" }],
+        risk: riskMed,
+      });
+      strictEqual(out.length, 0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("Python adapter requires pytest at risk=high", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ad-py-risk-"));
+    try {
+      await writeFile(
+        join(dir, "pyproject.toml"),
+        `[project]\nname="x"\ndependencies=["pytest","ruff","mypy"]\n`,
+      );
+      const high = { level: "high", dimensions: blank(), notes: [] } as const;
+      const out = planPythonChecks({
+        cwd: dir,
+        changedFiles: [{ path: "x.py", status: "modified" }],
+        risk: high,
+      });
+      const test = out.find((c) => c.id === "validation/python/test");
+      strictEqual(test?.required, true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("Python adapter picks uv runner when uv.lock present", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ad-py-uv-"));
+    try {
+      await writeFile(join(dir, "pyproject.toml"), `[project]\ndependencies=["pytest"]\n`);
+      await writeFile(join(dir, "uv.lock"), "");
+      const out = planPythonChecks({
+        cwd: dir,
+        changedFiles: [{ path: "x.py", status: "modified" }],
+        risk: riskMed,
+      });
+      const test = out.find((c) => c.id === "validation/python/test");
+      ok(test?.command.startsWith("uv run "));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("Python adapter prefers mypy over pyright when both declared", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ad-py-both-"));
+    try {
+      await writeFile(
+        join(dir, "pyproject.toml"),
+        `[project]\ndependencies=["mypy","pyright","pytest"]\n`,
+      );
+      const out = planPythonChecks({
+        cwd: dir,
+        changedFiles: [{ path: "x.py", status: "modified" }],
+        risk: riskMed,
+      });
+      const typecheck = out.find((c) => c.id === "validation/python/typecheck");
+      ok(typecheck?.command.includes("mypy"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("Python requirements.txt parser handles extras and comments", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ad-py-req-"));
+    try {
+      await writeFile(
+        join(dir, "requirements.txt"),
+        `# tooling\n` +
+        `pytest==7.0\n` +
+        `mypy[reports]==1.0  # type checker\n` +
+        `-e git+https://example.com/repo#egg=other\n` +
+        `Ruff>=0.1\n`,
+      );
+      const out = planPythonChecks({
+        cwd: dir,
+        changedFiles: [{ path: "x.py", status: "modified" }],
+        risk: riskMed,
+      });
+      const ids = out.map((c) => c.id);
+      ok(ids.includes("validation/python/lint"));
+      ok(ids.includes("validation/python/typecheck"));
+      ok(ids.includes("validation/python/test"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 function blank() {
   return {
     publicApi: false,

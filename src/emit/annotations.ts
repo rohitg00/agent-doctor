@@ -18,7 +18,7 @@ export function renderAnnotations(report: Report): string {
 function line(d: Diagnostic): string {
   const cmd = d.severity === "error" ? "error" : d.severity === "warning" ? "warning" : "notice";
   const parts = [`title=${escape(d.id)}`];
-  if (d.file) parts.push(`file=${escape(d.file)}`);
+  if (d.file !== undefined && d.file !== "") parts.push(`file=${escape(d.file)}`);
   if (d.line !== undefined) parts.push(`line=${d.line}`);
   return `::${cmd} ${parts.join(",")}::${escape(d.message)}`;
 }

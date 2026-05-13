@@ -69,7 +69,14 @@ async function detectPackages(cwd: string): Promise<PackageNode[]> {
   const rootManifest = join(cwd, "package.json");
   if (!existsSync(rootManifest)) return [];
 
-  const rootPkg = JSON.parse(await readFile(rootManifest, "utf8")) as Record<string, unknown>;
+  let rootPkg: Record<string, unknown> = {};
+  try {
+    rootPkg = JSON.parse(await readFile(rootManifest, "utf8")) as Record<string, unknown>;
+  } catch (err) {
+    process.stderr.write(
+      `agent-doctor: failed to parse ${rootManifest}: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+  }
   const out: PackageNode[] = [
     {
       name: (rootPkg["name"] as string) ?? "(root)",
@@ -191,7 +198,13 @@ async function walkSkills(dir: string, out: SkillDefinition[]): Promise<void> {
       name.endsWith(".skill.md") ||
       (p.includes(`${sep}.cursor${sep}rules${sep}`) && name.endsWith(".mdc"))
     ) {
-      out.push(await readSkill(p));
+      try {
+        out.push(await readSkill(p));
+      } catch (err) {
+        process.stderr.write(
+          `agent-doctor: failed to read skill ${p}: ${err instanceof Error ? err.message : String(err)}\n`,
+        );
+      }
     }
   }
 }

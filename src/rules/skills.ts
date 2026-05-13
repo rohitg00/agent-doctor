@@ -180,8 +180,9 @@ export function applicableSkillsForChanges(args: {
     const tokens = desc.toLowerCase().split(/[^a-z0-9_/.+-]/).filter((t) => t.length > 3);
     const match = args.changedPaths.find((p) => tokens.some((t) => p.toLowerCase().includes(t)));
     if (!match) continue;
-    const skillName = (skill.name ?? (skill.frontmatter["name"] as string) ?? "").toLowerCase();
-    const proven = skillName && loadedNames.has(skillName);
+    const rawName = skill.name ?? skill.frontmatter["name"];
+    const skillName = typeof rawName === "string" ? rawName.toLowerCase() : "";
+    const proven = skillName !== "" && loadedNames.has(skillName);
     out.push({
       id: proven ? "agent/skill-used" : "agent/skill-applicable-no-proof",
       severity: proven ? "info" : "info",

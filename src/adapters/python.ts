@@ -68,19 +68,42 @@ function pickRunner(cwd: string): string {
 }
 
 function hasTool(cwd: string, tool: string): boolean {
+  const lower = tool.toLowerCase();
   const pyproject = join(cwd, "pyproject.toml");
   if (existsSync(pyproject)) {
-    const raw = readFileSync(pyproject, "utf8");
-    if (raw.includes(`"${tool}"`) || raw.includes(`'${tool}'`) || raw.toLowerCase().includes(`\n[tool.${tool}`)) {
+    const raw = readFileSync(pyproject, "utf8").toLowerCase();
+    if (
+      raw.includes(`"${lower}"`) ||
+      raw.includes(`'${lower}'`) ||
+      raw.includes(`\n[tool.${lower}`)
+    ) {
       return true;
     }
   }
   const reqs = join(cwd, "requirements.txt");
-  if (existsSync(reqs)) {
-    const raw = readFileSync(reqs, "utf8").toLowerCase();
-    if (raw.split("\n").some((line) => line.trim().split(/[=<>~!]/)[0]?.trim() === tool)) {
-      return true;
+  if (existsSync(reqs) && requirementsHas(readFileSync(reqs, "utf8"), lower)) {
+    return true;
+  }
+  return false;
+}
+
+function requirementsHas(raw: string, tool: string): boolean {
+  const joined = raw
+    .replace(/\r\n/g, "\n")
+    .replace(/\\\n/g, "");
+  for (const rawLine of joined.split("\n")) {
+    const noComment = rawLine.split("#", 1)[0] ?? "";
+    const line = noComment.trim();
+    if (!line) continue;
+    if (line.startsWith("-e ") || line.startsWith("git+") || line.startsWith("-r ") || line.startsWith("--")) {
+      continue;
     }
+    const name = line
+      .split(/[=<>~!;@]/)[0]!
+      .replace(/\[[^\]]*\]/, "")
+      .trim()
+      .toLowerCase();
+    if (name === tool) return true;
   }
   return false;
 }

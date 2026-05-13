@@ -92,7 +92,7 @@ function parsePlain(raw: string, source: string): AgentEvent[] {
   const out: AgentEvent[] = [];
   const lines = raw.split("\n");
   for (const line of lines) {
-    const m = /\$ (.+)/.exec(line);
+    const m = /^\s*\$ (.+)/.exec(line);
     if (m) out.push({ type: "command.started", source, command: m[1]!.trim() });
   }
   return out;

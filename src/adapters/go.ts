@@ -9,8 +9,14 @@ interface Ctx {
 }
 
 export function planGoChecks(ctx: Ctx): PlannedCheck[] {
-  if (!existsSync(join(ctx.cwd, "go.mod"))) return [];
-  const touched = ctx.changedFiles.some((f) => f.path.endsWith(".go") || f.path === "go.mod" || f.path === "go.sum");
+  if (!existsSync(join(ctx.cwd, "go.mod")) && !existsSync(join(ctx.cwd, "go.work"))) return [];
+  const touched = ctx.changedFiles.some((f) =>
+    f.path.endsWith(".go") ||
+    f.path === "go.mod" ||
+    f.path === "go.sum" ||
+    f.path === "go.work" ||
+    f.path === "go.work.sum",
+  );
   if (!touched) return [];
 
   const out: PlannedCheck[] = [];

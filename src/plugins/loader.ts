@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { isAbsolute, resolve } from "node:path";
-import type { AgentDoctorPlugin } from "../plugin-api.js";
+import { SUPPORTED_PLUGIN_API, type AgentDoctorPlugin } from "../plugin-api.js";
 
 export async function loadPlugins(cwd: string, names: string[] | undefined): Promise<AgentDoctorPlugin[]> {
   if (!names || names.length === 0) return [];
@@ -39,6 +39,11 @@ function validate(value: unknown, source: string): AgentDoctorPlugin | undefined
   if (typeof plugin.name !== "string") {
     process.stderr.write(`agent-doctor: plugin ${source} is missing a "name"\n`);
     return undefined;
+  }
+  if (plugin.apiVersion && !plugin.apiVersion.startsWith("0.")) {
+    process.stderr.write(
+      `agent-doctor: plugin ${plugin.name} declares apiVersion ${plugin.apiVersion}; this host supports ${SUPPORTED_PLUGIN_API}\n`,
+    );
   }
   return plugin as AgentDoctorPlugin;
 }

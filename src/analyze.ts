@@ -35,12 +35,14 @@ export async function analyze(opts: CliOptions): Promise<Report> {
     ...planGoChecks({ cwd: opts.cwd, changedFiles, risk }),
     ...planRustChecks({ cwd: opts.cwd, changedFiles, risk }),
     ...(await planSecurityChecks({ cwd: opts.cwd, changedFiles, risk, config })),
-    ...(await planFromPlugins(plugins, { cwd: opts.cwd, config, detected, changedFiles, risk })),
   ];
 
-  const events = await ingestEvidence(opts.evidencePaths, opts.cwd);
-
   const diagnostics: Diagnostic[] = [];
+  const pluginPlan = await planFromPlugins(plugins, { cwd: opts.cwd, config, detected, changedFiles, risk });
+  plannedChecks.push(...pluginPlan.planned);
+  diagnostics.push(...pluginPlan.diagnostics);
+
+  const events = await ingestEvidence(opts.evidencePaths, opts.cwd);
   diagnostics.push(...lockfileMismatchRule({ changedFiles, detected }));
   diagnostics.push(...noRelatedTestRule({ changedFiles }));
   diagnostics.push(...generatedFileEditRule({ changedFiles, config }));
@@ -132,18 +134,23 @@ export async function analyze(opts: CliOptions): Promise<Report> {
 async function planFromPlugins(
   plugins: AgentDoctorPlugin[],
   ctx: Parameters<NonNullable<AgentDoctorPlugin["plan"]>>[0],
-): Promise<PlannedCheck[]> {
-  const out: PlannedCheck[] = [];
+): Promise<{ planned: PlannedCheck[]; diagnostics: Diagnostic[] }> {
+  const planned: PlannedCheck[] = [];
+  const diagnostics: Diagnostic[] = [];
   for (const plugin of plugins) {
     if (!plugin.plan) continue;
     try {
-      const planned = await plugin.plan(ctx);
-      out.push(...planned);
+      planned.push(...(await plugin.plan(ctx)));
     } catch (err) {
-      process.stderr.write(
-        `agent-doctor: plugin ${plugin.name} plan() threw: ${err instanceof Error ? err.message : String(err)}\n`,
-      );
+      diagnostics.push({
+        id: "plugin/rule-error",
+        severity: "warning",
+        title: `Plugin ${plugin.name} plan() threw`,
+        message: err instanceof Error ? err.message : String(err),
+        evidence: [],
+        confidence: "high",
+      });
     }
   }
-  return out;
+  return { planned, diagnostics };
 }

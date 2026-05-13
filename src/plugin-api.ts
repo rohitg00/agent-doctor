@@ -46,9 +46,12 @@ export interface Rule {
 
 export interface AgentDoctorPlugin {
   name: string;
+  apiVersion?: string;
   detect?(ctx: DetectContext): Promise<DetectedCapability[]> | DetectedCapability[];
   plan?(ctx: PlanContext): Promise<PlannedCheck[]> | PlannedCheck[];
   rules?: Rule[];
 }
 
 export type PluginFactory = () => AgentDoctorPlugin | Promise<AgentDoctorPlugin>;
+
+export const SUPPORTED_PLUGIN_API = "0.x";
