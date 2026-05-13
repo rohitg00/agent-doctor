@@ -44,7 +44,7 @@ export async function analyze(opts: CliOptions): Promise<Report> {
 
   const events = await ingestEvidence(opts.evidencePaths, opts.cwd);
   diagnostics.push(...lockfileMismatchRule({ changedFiles, detected }));
-  diagnostics.push(...noRelatedTestRule({ changedFiles }));
+  diagnostics.push(...noRelatedTestRule({ changedFiles, cwd: opts.cwd }));
   diagnostics.push(...generatedFileEditRule({ changedFiles, config }));
   diagnostics.push(...auditSkills({ skills: detected.skills, cwd: opts.cwd, config }));
   diagnostics.push(
