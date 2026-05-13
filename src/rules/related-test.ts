@@ -17,8 +17,8 @@ export function noRelatedTestRule(args: NoRelatedTestArgs): Diagnostic[] {
   const out: Diagnostic[] = [];
   const tests = args.changedFiles.filter((f) => TEST_HINTS.test(f.path) && f.status !== "deleted");
   const testStems = new Set(tests.map((f) => stem(f.path)));
-  const testBasenames = new Set(tests.map((f) => stemBasename(f.path)));
-  const onDiskBasenames = args.cwd ? collectOnDiskTestBasenames(args.cwd) : new Set<string>();
+  const diffTestTokens = unionTokens(tests.map((f) => stemBasename(f.path)));
+  const onDiskTokens = args.cwd ? collectOnDiskTestTokens(args.cwd) : new Set<string>();
 
   for (const f of args.changedFiles) {
     if (TEST_HINTS.test(f.path)) continue;
@@ -27,7 +27,7 @@ export function noRelatedTestRule(args: NoRelatedTestArgs): Diagnostic[] {
     if (f.status === "deleted") continue;
 
     const s = stem(f.path);
-    const baseName = stemBasename(f.path);
+    const sourceTokens = tokenize(stemBasename(f.path));
 
     let matched = false;
     for (const t of testStems) {
@@ -37,8 +37,8 @@ export function noRelatedTestRule(args: NoRelatedTestArgs): Diagnostic[] {
       }
     }
     if (matched) continue;
-    if (testBasenames.has(baseName)) continue;
-    if (onDiskBasenames.has(baseName)) continue;
+    if (sourceTokens.some((tok) => diffTestTokens.has(tok))) continue;
+    if (sourceTokens.some((tok) => onDiskTokens.has(tok))) continue;
 
     out.push({
       id: "tests/no-related-test-change",
@@ -68,12 +68,12 @@ function stemBasename(path: string): string {
     .replace(/\.(ts|tsx|js|jsx|mjs|cjs)$/, "");
 }
 
-function collectOnDiskTestBasenames(cwd: string): Set<string> {
-  const out = new Set<string>();
+function collectOnDiskTestTokens(cwd: string): Set<string> {
+  const basenames = new Set<string>();
   for (const root of TEST_ROOTS) {
-    walk(join(cwd, root), out, 0);
+    walk(join(cwd, root), basenames, 0);
   }
-  return out;
+  return unionTokens([...basenames]);
 }
 
 function walk(dir: string, out: Set<string>, depth: number): void {
@@ -102,4 +102,21 @@ function walk(dir: string, out: Set<string>, depth: number): void {
       out.add(stemBasename(e.name));
     }
   }
+}
+
+const STOPWORDS = new Set(["test", "spec", "index", "main", "lib", "src", "utils", "util", "helpers", "helper"]);
+
+function tokenize(stem: string): string[] {
+  return stem
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 3 && !STOPWORDS.has(t));
+}
+
+function unionTokens(basenames: string[]): Set<string> {
+  const out = new Set<string>();
+  for (const b of basenames) {
+    for (const tok of tokenize(b)) out.add(tok);
+  }
+  return out;
 }
