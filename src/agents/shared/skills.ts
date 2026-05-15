@@ -153,17 +153,17 @@ function referenceCheck(skill: SkillRecord, cwd: string, agent: AgentId): Diagno
   for (const match of skill.body.matchAll(REFERENCE_PATTERN)) {
     const ref = (match[1] ?? match[2] ?? "").trim();
     if (!ref || seen.has(ref)) continue;
+    if (!ref.startsWith("./") && !ref.startsWith("../") && !isAbsolute(ref)) continue;
     if (/^https?:\/\//.test(ref) || /^[a-z]+:/.test(ref)) continue;
     if (ref.includes(" ") || ref.length > 200) continue;
     seen.add(ref);
     const target = isAbsolute(ref) ? ref : resolve(skillDir, ref);
-    const cwdTarget = isAbsolute(ref) ? ref : resolve(cwd, ref);
-    if (!existsSync(target) && !existsSync(cwdTarget)) {
+    if (!existsSync(target)) {
       out.push({
         id: `${agent}/skills/reference-broken`,
         severity: "warning",
         title: "Skill references a missing file",
-        message: `${relative(cwd, skill.path)} references \`${ref}\` but no such file exists.`,
+        message: `${relative(cwd, skill.path)} references \`${ref}\` but no such file exists relative to the skill.`,
         file: skill.path,
         agent,
         category: "skills",
@@ -203,17 +203,36 @@ function destructiveCheck(skill: SkillRecord, agent: AgentId): Diagnostic[] {
   return out;
 }
 
+const SKIP_DIRS = new Set([
+  "node_modules",
+  ".git",
+  "plugins",
+  "cache",
+  "marketplaces",
+  "data",
+  "dist",
+  "build",
+  "coverage",
+]);
+const MAX_SKILL_DEPTH = 3;
+
 export async function discoverSkills(roots: string[]): Promise<SkillRecord[]> {
   const out: SkillRecord[] = [];
+  const seen = new Set<string>();
   for (const root of roots) {
     if (!existsSync(root)) continue;
-    await walkSkills(root, out);
+    await walkSkills(root, out, seen, 0);
   }
   return out;
 }
 
-async function walkSkills(dir: string, out: SkillRecord[], depth = 0): Promise<void> {
-  if (depth > 6) return;
+async function walkSkills(
+  dir: string,
+  out: SkillRecord[],
+  seen: Set<string>,
+  depth: number,
+): Promise<void> {
+  if (depth > MAX_SKILL_DEPTH) return;
   let entries;
   try {
     entries = readdirSync(dir, { withFileTypes: true });
@@ -221,9 +240,10 @@ async function walkSkills(dir: string, out: SkillRecord[], depth = 0): Promise<v
     return;
   }
   for (const e of entries) {
+    if (SKIP_DIRS.has(e.name)) continue;
     const p = join(dir, e.name);
     if (e.isDirectory()) {
-      await walkSkills(p, out, depth + 1);
+      await walkSkills(p, out, seen, depth + 1);
       continue;
     }
     const name = e.name.toLowerCase();
@@ -232,6 +252,8 @@ async function walkSkills(dir: string, out: SkillRecord[], depth = 0): Promise<v
       name.endsWith(".skill.md") ||
       (p.includes(`${sep}.cursor${sep}rules${sep}`) && name.endsWith(".mdc"));
     if (!isSkill) continue;
+    if (seen.has(p)) continue;
+    seen.add(p);
     try {
       out.push(await readSkill(p));
     } catch {

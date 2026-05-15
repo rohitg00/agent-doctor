@@ -57,7 +57,8 @@ function agentLine(agent: AgentSummary, theme: ThemeOptions): string {
   const g = glyphs(theme);
   const status = statusGlyph(agent.status, theme);
   const name = paint(agent.id.padEnd(15), "bold", theme);
-  const version = paint((agent.version ?? "").padEnd(12), "fog", theme);
+  const versionStr = (agent.version ?? "").slice(0, 11);
+  const version = paint(versionStr.padEnd(12), "fog", theme);
   let tail: string;
   switch (agent.status) {
     case "healthy":

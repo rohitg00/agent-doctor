@@ -53,7 +53,10 @@ export const claudeCodeAdapter: AgentAdapter = {
 
     if (ctx.deep && probe.binaryPath) {
       const version = await binaryVersion(probe.binaryPath, "--version", 750);
-      if (version) probe.version = version.replace(/^claude\s+/i, "").trim();
+      if (version) {
+        const cleaned = version.replace(/^claude\s+/i, "").trim();
+        probe.version = cleaned.split(/\s+/)[0];
+      }
     }
 
     out.push(
