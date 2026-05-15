@@ -1,7 +1,7 @@
 {
   "name": "agent-doctor",
-  "version": "0.0.1",
-  "description": "Diff-aware quality gate for AI-assisted code changes. Detects risk, plans validations, audits skills, ingests evidence.",
+  "version": "1.0.0-rc.1",
+  "description": "Self-diagnostic for AI coding agents. Detects every installed agent, validates configs / MCP / skills / hooks / auth / permissions, prints exact fixes.",
   "license": "Apache-2.0",
   "author": "Rohit Ghumare <ghumare64@gmail.com>",
   "homepage": "https://github.com/rohitg00/agent-doctor",
@@ -15,14 +15,17 @@
   "keywords": [
     "ai",
     "agent",
-    "code-review",
-    "diff",
-    "skills",
-    "claude",
+    "doctor",
+    "claude-code",
     "cursor",
     "codex",
-    "ci",
-    "linter"
+    "aider",
+    "opencode",
+    "windsurf",
+    "cline",
+    "mcp",
+    "diagnostic",
+    "health-check"
   ],
   "type": "module",
   "bin": {
@@ -40,6 +43,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -w -p tsconfig.json",
     "test": "node --test --import tsx test/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "doctor": "node dist/cli.js"
   },
