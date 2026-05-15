@@ -178,16 +178,7 @@ export async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
-  const showProgress = !opts.json && !opts.ci && process.stderr.isTTY === true;
-  if (showProgress) {
-    process.stderr.write(`agent-doctor: scanning agents${opts.deep ? " (deep mode)" : ""}…\n`);
-  }
-  const report = await diagnose({
-    ...opts,
-    onAdapter: showProgress
-      ? (s) => process.stderr.write(`  ${s.id.padEnd(15)} ${s.status} (${s.durationMs}ms)\n`)
-      : undefined,
-  });
+  const report = await diagnose(opts);
 
   await emit(report, opts, version);
 
