@@ -2,28 +2,54 @@ export type Severity = "error" | "warning" | "info";
 
 export type Confidence = "high" | "medium" | "low";
 
-export type RiskLevel = "low" | "medium" | "high" | "critical";
+export type AgentId =
+  | "claude-code"
+  | "cursor"
+  | "codex"
+  | "windsurf"
+  | "aider"
+  | "cline"
+  | "goose"
+  | "continue"
+  | "opencode"
+  | "roo"
+  | string;
 
-export type Profile = "local" | "ci" | "release" | "skill-library";
+export type DiagnosticCategory =
+  | "install"
+  | "auth"
+  | "config"
+  | "mcp"
+  | "skills"
+  | "rules"
+  | "hooks"
+  | "permissions"
+  | "version"
+  | "network";
 
-export type Mode = "diff" | "staged" | "full";
+export type FixHint =
+  | { kind: "command"; run: string; cwd?: string; sudo?: boolean }
+  | {
+      kind: "file-edit";
+      path: string;
+      insert?: string;
+      replace?: { from: string; to: string };
+      keyPath?: string;
+      value?: unknown;
+    }
+  | { kind: "env-set"; name: string; example?: string; shell?: "bash" | "zsh" | "fish" }
+  | { kind: "reinstall"; instruction: string }
+  | { kind: "doc"; url: string; anchor?: string };
 
 export type Evidence =
   | { kind: "file"; path: string; line?: number; hash?: string }
-  | { kind: "diff"; file: string; status: string; insertions?: number; deletions?: number }
   | { kind: "command"; command: string; exitCode: number; durationMs: number; outputExcerpt?: string }
-  | { kind: "ci"; provider: string; runUrl?: string; status: string }
-  | { kind: "agent-event"; source: string; event: string; timestamp?: string; detail?: unknown }
-  | { kind: "artifact"; path: string; artifactType: "screenshot" | "trace" | "coverage" | "snapshot" | "log" };
+  | { kind: "env"; name: string; present: boolean }
+  | { kind: "config"; path: string; key?: string; value?: unknown };
 
 export interface NextAction {
   label: string;
   command?: string;
-}
-
-export interface SuggestedFix {
-  description: string;
-  patch?: string;
 }
 
 export interface Diagnostic {
@@ -33,132 +59,75 @@ export interface Diagnostic {
   message: string;
   file?: string;
   line?: number;
+  agent?: AgentId;
+  category?: DiagnosticCategory;
   evidence: Evidence[];
   confidence: Confidence;
+  fixHint?: FixHint;
   nextActions?: NextAction[];
-  fix?: SuggestedFix;
+  fatal?: boolean;
+  since?: string;
 }
 
-export interface CheckResult {
-  id: string;
-  command?: string;
-  status: "passed" | "failed" | "skipped" | "missing";
-  required: boolean;
-  durationMs?: number;
-  diagnostics: Diagnostic[];
+export interface AgentProbe {
+  id: AgentId;
+  present: boolean;
+  binary?: string;
+  binaryPath?: string;
+  version?: string;
+  configPaths: string[];
+  source: "binary" | "vscode-ext" | "config-only" | "absent";
+  notes?: string[];
 }
 
-export interface ChangedFile {
-  path: string;
-  status: "added" | "modified" | "deleted" | "renamed" | "copied" | "untracked";
-  oldPath?: string;
-  insertions?: number;
-  deletions?: number;
+export interface AgentSummary {
+  id: AgentId;
+  present: boolean;
+  version?: string;
+  status: "healthy" | "warnings" | "errors" | "absent" | "skipped";
+  errorCount: number;
+  warningCount: number;
+  infoCount: number;
+  headline?: string;
 }
 
-export interface PackageNode {
-  name: string;
-  dir: string;
-  manifest: string;
-  scripts: Record<string, string>;
-  workspaceRoot: boolean;
-}
-
-export type PackageManager = "npm" | "pnpm" | "yarn" | "bun" | "unknown";
-
-export interface SkillDefinition {
-  path: string;
-  name?: string;
-  description?: string;
-  frontmatter: Record<string, unknown>;
-  body: string;
-  bytes: number;
-}
-
-export interface AgentInstructionFile {
-  path: string;
-  bytes: number;
-}
-
-export interface CiWorkflow {
-  path: string;
-  bytes: number;
-}
-
-export interface ProjectGraph {
-  root: string;
-  packageManager: PackageManager;
-  packages: PackageNode[];
-  agentInstructions: AgentInstructionFile[];
-  skills: SkillDefinition[];
-  ciWorkflows: CiWorkflow[];
-  hasLockfile: boolean;
-  lockfileName?: string;
-}
-
-export interface RiskDimensions {
-  publicApi: boolean;
-  schemaOrMigration: boolean;
-  authOrPermission: boolean;
-  uiOrRoute: boolean;
-  dependencyGraph: boolean;
-  generated: boolean;
-  agentInstruction: boolean;
-  ciOrBuild: boolean;
-  largeDeletion: boolean;
-  securitySensitive: boolean;
-}
-
-export interface RiskSummary {
-  level: RiskLevel;
-  dimensions: RiskDimensions;
-  notes: string[];
-}
-
-export interface PlannedCheck {
-  id: string;
-  command: string;
-  required: boolean;
-  reason: string;
-  cwd?: string;
-}
-
-export interface EvidenceSummary {
-  diffFiles: number;
-  commandRuns: number;
-  ciLogs: number;
-  agentEvents: number;
-  artifacts: number;
+export interface Tally {
+  agentsDetected: number;
+  agentsHealthy: number;
+  agentsWithWarnings: number;
+  agentsWithErrors: number;
+  errors: number;
+  warnings: number;
+  infos: number;
+  suppressed: number;
 }
 
 export interface Report {
   ok: boolean;
-  score: number;
-  label: "Ready" | "Needs review" | "Risky" | "Blocked";
-  profile: Profile;
-  mode: Mode;
-  detected: ProjectGraph;
-  risk: RiskSummary;
-  changedFiles: ChangedFile[];
-  plannedChecks: PlannedCheck[];
-  evidence: EvidenceSummary;
-  checks: CheckResult[];
+  tally: Tally;
+  agents: AgentSummary[];
   diagnostics: Diagnostic[];
+  durationMs: number;
+  deep: boolean;
+  network: boolean;
 }
 
 export interface CliOptions {
   cwd: string;
-  mode: Mode;
-  base?: string;
-  profile: Profile;
-  run: boolean;
-  planOnly: boolean;
+  agent?: AgentId;
+  list: boolean;
+  deep: boolean;
+  noNetwork: boolean;
+  ci: boolean;
   json: boolean;
+  sarif?: string | true;
+  junit?: string | true;
   annotations: boolean;
   failOn: "error" | "warning" | "none";
-  evidencePaths: string[];
-  configPath?: string;
+  ignore: string[];
+  showIgnored: boolean;
   explain?: string;
-  aiReview?: boolean;
-  noNetwork?: boolean;
+  width?: number;
+  color: boolean;
+  unicode: boolean;
 }

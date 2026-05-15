@@ -2,13 +2,16 @@ import type { Diagnostic, Report } from "../types.js";
 
 export function renderSarif(report: Report, version: string): string {
   const ruleIds = unique(report.diagnostics.map((d) => d.id));
-  const rules = ruleIds.map((id) => ({
-    id,
-    name: id,
-    shortDescription: { text: id },
-    helpUri: `https://github.com/rohitg00/agent-doctor/blob/main/docs/DIAGNOSTICS.md#${anchor(id)}`,
-    defaultConfiguration: { level: defaultLevelFor(id, report.diagnostics) },
-  }));
+  const rules = ruleIds.map((id) => {
+    const sample = report.diagnostics.find((d) => d.id === id);
+    return {
+      id,
+      name: id,
+      shortDescription: { text: id },
+      helpUri: `https://github.com/rohitg00/agent-doctor/blob/main/docs/CHECKS.md#${anchor(id)}`,
+      defaultConfiguration: { level: sarifLevel(sample?.severity ?? "info") },
+    };
+  });
 
   const results = report.diagnostics.map((d) => ({
     ruleId: d.id,
@@ -24,7 +27,11 @@ export function renderSarif(report: Report, version: string): string {
           },
         ]
       : undefined,
-    properties: { confidence: d.confidence },
+    properties: {
+      confidence: d.confidence,
+      agent: d.agent,
+      category: d.category,
+    },
   }));
 
   const sarif = {
@@ -42,11 +49,10 @@ export function renderSarif(report: Report, version: string): string {
         },
         results,
         properties: {
-          score: report.score,
-          label: report.label,
-          profile: report.profile,
-          mode: report.mode,
-          risk: report.risk.level,
+          ok: report.ok,
+          tally: report.tally,
+          deep: report.deep,
+          network: report.network,
         },
       },
     ],
@@ -63,11 +69,6 @@ function sarifLevel(severity: Diagnostic["severity"]): "error" | "warning" | "no
     default:
       return "note";
   }
-}
-
-function defaultLevelFor(id: string, diagnostics: Diagnostic[]): "error" | "warning" | "note" {
-  const first = diagnostics.find((d) => d.id === id);
-  return first ? sarifLevel(first.severity) : "note";
 }
 
 function unique(ids: string[]): string[] {

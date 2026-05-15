@@ -5,13 +5,6 @@ export function renderAnnotations(report: Report): string {
   for (const d of report.diagnostics) {
     out.push(line(d));
   }
-  for (const c of report.checks) {
-    if (c.status === "failed" && c.required) {
-      out.push(
-        `::error title=${escape(c.id)}::Required check ${escape(c.id)} failed (exit non-zero)`,
-      );
-    }
-  }
   return out.length === 0 ? "" : `${out.join("\n")}\n`;
 }
 

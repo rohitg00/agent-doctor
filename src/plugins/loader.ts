@@ -40,7 +40,7 @@ function validate(value: unknown, source: string): AgentDoctorPlugin | undefined
     process.stderr.write(`agent-doctor: plugin ${source} is missing a "name"\n`);
     return undefined;
   }
-  if (plugin.apiVersion && !plugin.apiVersion.startsWith("0.")) {
+  if (plugin.apiVersion && !plugin.apiVersion.startsWith("1.")) {
     process.stderr.write(
       `agent-doctor: plugin ${plugin.name} declares apiVersion ${plugin.apiVersion}; this host supports ${SUPPORTED_PLUGIN_API}\n`,
     );

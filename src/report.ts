@@ -1,183 +1,187 @@
-import type { CheckResult, Diagnostic, Report } from "./types.js";
+import type { AgentId, AgentSummary, Diagnostic, Report } from "./types.js";
 import {
   banner,
-  compose,
   glyphs,
   paint,
-  progressBar,
   rule,
   sectionHeader,
   stripAnsi,
   type ThemeOptions,
   type Tone,
 } from "./theme.js";
+import { renderFixHint } from "./agents/shared/fixhint.js";
 
 export interface RenderOptions {
   color: boolean;
   unicode: boolean;
   width: number;
   version: string;
+  agentFocus?: AgentId;
 }
 
 export function renderText(report: Report, opts: RenderOptions): string {
   const theme: ThemeOptions = { color: opts.color, unicode: opts.unicode };
-  const g = glyphs(theme);
   const lines: string[] = [];
-
   lines.push(banner(opts.version, theme));
   lines.push("");
-  lines.push(scoreCard(report, opts));
+  lines.push(rule(Math.min(opts.width, 78), theme));
+  lines.push("");
+
+  if (opts.agentFocus) {
+    lines.push(...renderAgentDeepDive(report, opts.agentFocus, theme));
+  } else {
+    lines.push(...renderOverview(report, theme));
+  }
+
   lines.push("");
   lines.push(rule(Math.min(opts.width, 78), theme));
-
-  lines.push(...summary(report, theme));
-
-  if (report.plannedChecks.length > 0) {
-    lines.push(sectionHeader(`planned (${report.plannedChecks.length})`, theme));
-    for (const c of report.plannedChecks) {
-      const tag = c.required
-        ? paint("required", "lime", theme)
-        : paint("recommended", "moss", theme);
-      lines.push(`  ${g.arrow} ${tag}  ${paint(c.id, "bold", theme)}`);
-      lines.push(`    ${paint(g.branchM, "charcoal", theme)} ${paint(c.command, "mint", theme)}`);
-      lines.push(`    ${paint(g.branchL, "charcoal", theme)} ${paint(c.reason, "fog", theme)}`);
-    }
-  }
-
-  if (report.checks.length > 0) {
-    lines.push(sectionHeader(`results (${report.checks.length})`, theme));
-    for (const c of report.checks) {
-      lines.push(`  ${checkBadge(c, theme)}  ${paint(c.id, "bold", theme)}${duration(c, theme)}`);
-      if (c.command) {
-        lines.push(`    ${paint(g.branchL, "charcoal", theme)} ${paint(c.command, "fog", theme)}`);
-      }
-    }
-  }
-
-  const grouped = groupBySeverity(report.diagnostics);
-  if (grouped.error.length > 0) {
-    lines.push(sectionHeader(`errors (${grouped.error.length})`, theme));
-    for (const d of grouped.error) lines.push(...renderDiagnostic(d, theme));
-  }
-  if (grouped.warning.length > 0) {
-    lines.push(sectionHeader(`warnings (${grouped.warning.length})`, theme));
-    for (const d of grouped.warning) lines.push(...renderDiagnostic(d, theme));
-  }
-  if (grouped.info.length > 0) {
-    lines.push(sectionHeader(`info (${grouped.info.length})`, theme));
-    for (const d of grouped.info) lines.push(...renderDiagnostic(d, theme));
-  }
-
-  if (report.diagnostics.length === 0 && report.checks.length === 0 && report.plannedChecks.length === 0) {
-    lines.push("");
-    lines.push(paint("  no diagnostics. nothing to plan.", "fog", theme));
-  }
-
+  lines.push(...renderFooter(report, theme));
   return lines.join("\n");
 }
 
-function scoreCard(report: Report, opts: RenderOptions): string {
-  const theme: ThemeOptions = { color: opts.color, unicode: opts.unicode };
-  const tone: Tone =
-    report.label === "Ready"
-      ? "lime"
-      : report.label === "Needs review"
-        ? "ember"
-        : report.label === "Risky"
-          ? "amber"
-          : "rust";
-  const score = `${report.score}/100`;
-  const bar = progressBar(report.score, 28, theme);
-  const label = compose(report.label, ["bold", tone], theme);
-  return `  ${bar}  ${paint(score, "bold", theme)}  ${label}`;
-}
-
-function summary(report: Report, theme: ThemeOptions): string[] {
+function renderOverview(report: Report, theme: ThemeOptions): string[] {
   const lines: string[] = [];
-  const meta = [
-    `mode ${report.mode}`,
-    `profile ${report.profile}`,
-    `risk ${report.risk.level}`,
-    `files ${report.changedFiles.length}`,
-  ].join(`  ${paint("·", "charcoal", theme)}  `);
-  lines.push("");
-  lines.push(`  ${paint(meta, "fog", theme)}`);
-
-  const detectedParts: string[] = [];
-  if (report.detected.packageManager !== "unknown") detectedParts.push(report.detected.packageManager);
-  if (report.detected.packages.length > 1) detectedParts.push(`${report.detected.packages.length} packages`);
-  if (report.detected.skills.length > 0) detectedParts.push(`${report.detected.skills.length} skills`);
-  if (report.detected.agentInstructions.length > 0) detectedParts.push("agent instructions");
-  if (report.detected.ciWorkflows.length > 0) detectedParts.push(`${report.detected.ciWorkflows.length} ci workflows`);
-  if (detectedParts.length > 0) {
-    lines.push(`  ${paint(`detected ${detectedParts.join(", ")}`, "moss", theme)}`);
+  const visible = report.agents.filter((a) => a.present || a.status === "absent");
+  if (visible.length === 0) {
+    lines.push("  no AI coding agents detected on this machine.");
+    return lines;
   }
 
-  if (report.risk.notes.length > 0) {
-    for (const note of report.risk.notes.slice(0, 3)) {
-      lines.push(`  ${paint(`! ${note}`, "amber", theme)}`);
-    }
-    if (report.risk.notes.length > 3) {
-      lines.push(`  ${paint(`+ ${report.risk.notes.length - 3} more`, "charcoal", theme)}`);
-    }
+  for (const agent of visible) {
+    lines.push(`  ${agentLine(agent, theme)}`);
   }
   return lines;
 }
 
-function checkBadge(c: CheckResult, theme: ThemeOptions): string {
+function agentLine(agent: AgentSummary, theme: ThemeOptions): string {
   const g = glyphs(theme);
-  switch (c.status) {
-    case "passed":
-      return paint(g.check, "lime", theme);
-    case "failed":
-      return paint(g.cross, "rust", theme);
-    case "missing":
-      return paint(g.warn, "amber", theme);
+  const status = statusGlyph(agent.status, theme);
+  const name = paint(agent.id.padEnd(15), "bold", theme);
+  const version = paint((agent.version ?? "").padEnd(12), "fog", theme);
+  let tail: string;
+  switch (agent.status) {
+    case "healthy":
+      tail = paint("healthy", "mint", theme);
+      break;
+    case "warnings":
+      tail = paint(`${agent.warningCount} warning${agent.warningCount === 1 ? "" : "s"}`, "amber", theme) +
+        (agent.headline ? `  ${paint(`(${agent.headline})`, "fog", theme)}` : "");
+      break;
+    case "errors":
+      tail = paint(`${agent.errorCount} error${agent.errorCount === 1 ? "" : "s"}`, "rust", theme) +
+        (agent.headline ? `  ${paint(`(${agent.headline})`, "fog", theme)}` : "");
+      break;
+    case "absent":
+      tail = paint("not installed", "charcoal", theme);
+      break;
+    case "skipped":
+      tail = paint("skipped", "charcoal", theme);
+      break;
     default:
-      return paint(g.bullet, "charcoal", theme);
+      tail = "";
   }
+  void g;
+  return `${status}  ${name}${version}${tail}`;
 }
 
-function duration(c: CheckResult, theme: ThemeOptions): string {
-  if (c.durationMs === undefined) return "";
-  return `  ${paint(`${(c.durationMs / 1000).toFixed(1)}s`, "charcoal", theme)}`;
+function renderAgentDeepDive(report: Report, focus: AgentId, theme: ThemeOptions): string[] {
+  const lines: string[] = [];
+  const summary = report.agents.find((a) => a.id === focus);
+  if (!summary || !summary.present) {
+    lines.push(`  ${paint(focus, "bold", theme)} ${paint("not installed", "charcoal", theme)}`);
+    return lines;
+  }
+
+  const diags = report.diagnostics.filter((d) => d.agent === focus);
+  const byCategory = groupByCategory(diags);
+  for (const [category, items] of byCategory) {
+    lines.push(sectionHeader(category, theme));
+    for (const d of items) {
+      lines.push(...renderDiagnosticLine(d, theme));
+    }
+    lines.push("");
+  }
+  if (byCategory.size === 0) {
+    lines.push(`  ${paint(`${summary.id}`, "bold", theme)} ${paint("looks healthy", "mint", theme)}`);
+  }
+  return lines;
 }
 
-function renderDiagnostic(d: Diagnostic, theme: ThemeOptions): string[] {
+function groupByCategory(diagnostics: Diagnostic[]): Map<string, Diagnostic[]> {
+  const out = new Map<string, Diagnostic[]>();
+  for (const d of diagnostics) {
+    const cat = d.category ?? "other";
+    if (!out.has(cat)) out.set(cat, []);
+    out.get(cat)!.push(d);
+  }
+  return out;
+}
+
+function renderDiagnosticLine(d: Diagnostic, theme: ThemeOptions): string[] {
   const g = glyphs(theme);
-  const sevGlyph =
-    d.severity === "error" ? paint(g.cross, "rust", theme)
-      : d.severity === "warning" ? paint(g.warn, "amber", theme)
-        : paint(g.info, "moss", theme);
+  const status = statusGlyph(
+    d.severity === "error" ? "errors" : d.severity === "warning" ? "warnings" : "healthy",
+    theme,
+  );
   const out: string[] = [];
-  out.push(`  ${sevGlyph} ${compose(d.id, ["bold", "ember"], theme)}`);
-  out.push(`    ${paint(g.branchM, "charcoal", theme)} ${d.title}`);
+  out.push(`  ${status}  ${paint(d.id, "bold", theme)}`);
+  out.push(`      ${paint(g.branchM, "charcoal", theme)} ${d.title}`);
   if (d.message && d.message !== d.title) {
-    const msgLines = d.message.split("\n");
-    for (const line of msgLines) {
-      out.push(`    ${paint(g.branchM, "charcoal", theme)} ${paint(line, "fog", theme)}`);
+    for (const line of d.message.split("\n")) {
+      out.push(`      ${paint(g.branchM, "charcoal", theme)} ${paint(line, "fog", theme)}`);
     }
   }
   if (d.file) {
     const loc = d.line !== undefined ? `${d.file}:${d.line}` : d.file;
-    out.push(`    ${paint(g.branchM, "charcoal", theme)} ${paint(`at ${loc}`, "moss", theme)}`);
+    out.push(`      ${paint(g.branchM, "charcoal", theme)} ${paint(`at ${loc}`, "moss", theme)}`);
   }
-  for (const next of d.nextActions ?? []) {
-    out.push(`    ${paint(g.branchL, "charcoal", theme)} ${paint("next:", "mint", theme)} ${next.label}`);
-    if (next.command) {
-      out.push(`         ${paint(g.arrow, "ember", theme)} ${paint(next.command, "fog", theme)}`);
-    }
+  const fix = renderFixHint(d.fixHint);
+  for (const f of fix) {
+    out.push(`      ${paint(g.branchL, "charcoal", theme)} ${paint("fix:", "mint", theme)} ${paint(f, "fog", theme)}`);
   }
-  out.push("");
   return out;
 }
 
-function groupBySeverity(ds: Diagnostic[]): { error: Diagnostic[]; warning: Diagnostic[]; info: Diagnostic[] } {
-  return {
-    error: ds.filter((d) => d.severity === "error"),
-    warning: ds.filter((d) => d.severity === "warning"),
-    info: ds.filter((d) => d.severity === "info"),
-  };
+function statusGlyph(status: AgentSummary["status"] | "ok", theme: ThemeOptions): string {
+  const g = glyphs(theme);
+  switch (status) {
+    case "healthy":
+      return paint(`[${g.check}]`, "mint", theme);
+    case "warnings":
+      return paint(`[${g.warn}]`, "amber", theme);
+    case "errors":
+      return paint(`[${g.cross}]`, "rust", theme);
+    case "absent":
+      return paint(`[${g.info}]`, "charcoal", theme);
+    case "skipped":
+    default:
+      return paint(`[${g.info}]`, "charcoal", theme);
+  }
+}
+
+function renderFooter(report: Report, theme: ThemeOptions): string[] {
+  const lines: string[] = [];
+  const t = report.tally;
+  const seconds = (report.durationMs / 1000).toFixed(1);
+  const tone: Tone = t.errors > 0 ? "rust" : t.warnings > 0 ? "amber" : "mint";
+
+  const parts = [
+    `${t.agentsDetected} detected`,
+    `${t.agentsHealthy} healthy`,
+    `${t.agentsWithWarnings} with warnings`,
+    `${t.agentsWithErrors} with errors`,
+  ];
+  lines.push("");
+  lines.push(`  ${paint(parts.join("  ·  "), tone, theme)}  ${paint(`(${seconds}s)`, "charcoal", theme)}`);
+
+  if (t.suppressed > 0) {
+    lines.push(`  ${paint(`${t.suppressed} diagnostics suppressed (use --show-ignored to see)`, "charcoal", theme)}`);
+  }
+
+  if (!report.deep) {
+    lines.push(`  ${paint("→ agent-doctor --deep    run live probes (binary --version, MCP pings)", "fog", theme)}`);
+  }
+  return lines;
 }
 
 export function renderJson(report: Report): string {
